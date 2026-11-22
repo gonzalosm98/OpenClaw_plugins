@@ -1,0 +1,73 @@
+{
+  "name": "@gonzalo/openclaw-antigravity-local",
+  "version": "0.6.0-local.1",
+  "private": true,
+  "description": "Runs Google's Antigravity CLI (agy) as a subscription-backed OpenClaw model provider.",
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "antigravity",
+    "agy",
+    "gemini",
+    "llm"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src",
+    "agy-plugin",
+    "scripts/check-host-integration.mjs",
+    "scripts/check-stream-integration.mjs",
+    "scripts/check-live-parallel.mjs",
+    "setup-api.js",
+    "doctor-contract-api.js",
+    "openclaw.plugin.json",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=24.16.0 <25 || >=26.1.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.10.2"
+  },
+  "devDependencies": {
+    "openclaw": "2026.10.2"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "openclaw": {
+    "extensions": [
+      "./src/index.js"
+    ],
+    "runtimeExtensions": [
+      "./src/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.10.2",
+      "minGatewayVersion": "2026.10.2"
+    },
+    "build": {
+      "openclawVersion": "2026.10.2",
+      "pluginSdkVersion": "2026.10.2"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "check:host-integration": "node scripts/check-host-integration.mjs",
+    "check:stream-integration": "node scripts/check-stream-integration.mjs",
+    "docs:test": "node --test scripts/docs/*.test.mjs",
+    "docs:build": "node scripts/docs/build.mjs",
+    "docs:verify": "node scripts/docs/verify.mjs",
+    "docs:release": "node scripts/docs/release-artifact.mjs",
+    "check:live-parallel": "node scripts/check-live-parallel.mjs"
+  }
+}

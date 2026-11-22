@@ -1,0 +1,153 @@
+{
+  "id": "antigravity",
+  "name": "Antigravity CLI",
+  "version": "0.6.0-local.1",
+  "description": "Runs Google's Antigravity CLI (agy) as a subscription-backed model provider.",
+  "enabledByDefault": false,
+  "activation": {
+    "onStartup": true,
+    "onProviders": [
+      "antigravity-cli"
+    ]
+  },
+  "providers": [
+    "antigravity-cli"
+  ],
+  "cliBackends": [
+    "antigravity-cli"
+  ],
+  "autoEnableWhenConfiguredProviders": [
+    "antigravity-cli"
+  ],
+  "syntheticAuthRefs": [
+    "antigravity-cli"
+  ],
+  "nonSecretAuthMarkers": [
+    "openclaw:antigravity-cli-native-auth",
+    "agy-session"
+  ],
+  "doctorContract": {
+    "configRepair": true
+  },
+  "modelCatalog": {
+    "discovery": {
+      "antigravity-cli": "refreshable"
+    }
+  },
+  "setup": {
+    "providers": [
+      {
+        "id": "antigravity-cli"
+      }
+    ],
+    "cliBackends": [
+      "antigravity-cli"
+    ]
+  },
+  "providerAuthChoices": [
+    {
+      "provider": "antigravity-cli",
+      "method": "cli",
+      "choiceId": "antigravity-cli",
+      "appGuidedDiscovery": true,
+      "appGuidedActionLabel": "Reconnect",
+      "choiceLabel": "Antigravity CLI",
+      "choiceHint": "Use an existing Antigravity CLI (agy) login on this host. Run `agy models` to confirm.",
+      "groupId": "antigravity",
+      "groupLabel": "Antigravity",
+      "groupHint": "Subscription-backed models via agy"
+    }
+  ],
+  "uiHints": {
+    "command": {
+      "label": "agy binary",
+      "help": "Path to the agy executable. Prefer an absolute path after install; default `agy` resolves via PATH.",
+      "placeholder": "agy"
+    },
+    "mode": {
+      "label": "agy mode",
+      "help": "Value for `agy --mode`, or `none` to omit the flag."
+    },
+    "skipPermissions": {
+      "label": "Skip permissions",
+      "help": "Passes --dangerously-skip-permissions to agy. Off by default. Only enable if you accept tool runs without agy permission prompts."
+    },
+    "maxConcurrency": {
+      "label": "Max concurrency",
+      "help": "Max simultaneous agy turns across all conversations/subagents."
+    },
+    "liveSession": {
+      "label": "Warm live sessions",
+      "help": "Keep a warm agy process per conversation (faster follow-ups)."
+    },
+    "idleTimeoutSeconds": {
+      "label": "Idle timeout (s)",
+      "help": "Evict an idle warm agy process after this many seconds."
+    },
+    "maxSilentThinkingSeconds": {
+      "label": "Max silent keepalive (s)",
+      "help": "Max time synthetic keepalives are emitted while agy is silent (keeps the OpenClaw session watchdog from firing)."
+    },
+    "mcpTimeoutSeconds": {
+      "label": "MCP timeout (s)",
+      "help": "timeoutSeconds written for MCP servers handed to agy."
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "command": {
+        "type": "string",
+        "description": "Path to the agy binary. Defaults to `agy` on PATH. Prefer an absolute path; do not pass shell metacharacters."
+      },
+      "mode": {
+        "type": "string",
+        "description": "agy --mode value, or \"none\" to omit the flag.",
+        "enum": [
+          "accept-edits",
+          "auto",
+          "plan",
+          "none"
+        ]
+      },
+      "skipPermissions": {
+        "type": "boolean",
+        "description": "Pass --dangerously-skip-permissions. Off by default."
+      },
+      "maxConcurrency": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 16,
+        "default": 4,
+        "description": "Max simultaneous agy turns across all conversations/subagents."
+      },
+      "liveSession": {
+        "type": "boolean",
+        "default": true,
+        "description": "Keep a warm agy process per conversation (faster follow-ups)."
+      },
+      "idleTimeoutSeconds": {
+        "type": "integer",
+        "minimum": 30,
+        "maximum": 3600,
+        "default": 600,
+        "description": "Idle warm agy process eviction timeout in seconds."
+      },
+      "maxSilentThinkingSeconds": {
+        "type": "integer",
+        "minimum": 60,
+        "maximum": 3600,
+        "default": 720,
+        "description": "Max time synthetic keepalives are emitted while agy is silent."
+      },
+      "mcpTimeoutSeconds": {
+        "type": "integer",
+        "minimum": 30,
+        "maximum": 3600,
+        "default": 600,
+        "description": "timeoutSeconds written for MCP servers handed to agy."
+      }
+    }
+  }
+}
