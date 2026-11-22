@@ -1,15 +1,17 @@
-// CLI backend that drives Google's Antigravity CLI (`agy`) in print mode.
+// CLI backend that drives Google's Antigravity CLI (`agy`) in stream-json mode.
 //
-// This is the `claude -p` pattern: OpenClaw owns the conversation, agy owns
-// inference and auth. agy authenticates itself against the user's Antigravity
+// This is the `claude -p` / `claude-stdio` pattern: OpenClaw owns the conversation,
+// agy owns inference and auth. agy authenticates itself against the user's Antigravity
 // subscription, so this backend carries no API key and no auth methods.
 //
 // AGY's event/step_update/result dialect is translated by the public JSONL hook.
 // The native CLI retains inference, tools, authentication, and compaction ownership.
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { delimiter, dirname, isAbsolute, join } from "node:path";
+import { delimiter, isAbsolute, join } from "node:path";
+import { createKeyedMutex, createSemaphore } from "./concurrency.js";
+import { executeAntigravityLiveTurn } from "./live-session.js";
+import { prepareAgyMcpIsolation } from "./mcp-isolation.js";
 import {
   ANTIGRAVITY_MODEL_ALIASES,
   isAntigravityEffortLevel,
@@ -17,7 +19,6 @@ import {
   resolveAntigravityTransportModelId,
 } from "./models.js";
 import {
-  MAX_PROMPT_ARG_CHARS,
   executeAntigravityStream,
   parseAntigravityJsonlEvent,
 } from "./stream.js";
@@ -146,7 +147,7 @@ export function resolveAntigravityEffortArgs(baseArgs, thinkingLevel) {
  * @param {{mode?: string, skipPermissions?: boolean}} [options]
  */
 export function buildBaseArgs(options = {}) {
-  const args = ["--print", "{prompt}", "--output-format", "stream-json"];
+  const args = ["--input-format", "stream-json", "--output-format", "stream-json"];
   const mode = options.mode ?? DEFAULT_MODE;
   if (mode !== "none") {
     args.push("--mode", mode);
@@ -154,107 +155,33 @@ export function buildBaseArgs(options = {}) {
   if (options.skipPermissions === true) {
     args.push("--dangerously-skip-permissions");
   }
+  args.push("--disable-slash-commands");
   return args;
 }
 
-async function syncAntigravityMcpConfig(env, toolAvailability) {
-  const settingsPath = env?.GEMINI_CLI_SYSTEM_SETTINGS_PATH;
-  if (typeof settingsPath !== "string" || !settingsPath.trim()) {
-    return null;
-  }
-  let parsedSettings;
-  try {
-    parsedSettings = JSON.parse(await readFile(settingsPath, "utf8"));
-  } catch {
-    return null;
-  }
-  const sourceServers = parsedSettings?.mcpServers;
-  if (!sourceServers || typeof sourceServers !== "object" || Array.isArray(sourceServers)) {
-    return null;
-  }
-  const agyServers = {};
-  for (const [name, server] of Object.entries(sourceServers)) {
-    if (!server || typeof server !== "object" || Array.isArray(server)) {
-      continue;
-    }
-    const serverUrl = server.serverUrl ?? server.url;
-    const entry = {};
-    if (typeof serverUrl === "string" && serverUrl.trim()) {
-      entry.serverUrl = serverUrl.trim();
-      if (server.headers && typeof server.headers === "object" && !Array.isArray(server.headers)) {
-        entry.headers = server.headers;
-      }
-    } else if (typeof server.command === "string" && server.command.trim()) {
-      entry.command = server.command.trim();
-      if (Array.isArray(server.args)) entry.args = server.args;
-      if (server.env && typeof server.env === "object") entry.env = server.env;
-      if (typeof server.cwd === "string" && server.cwd.trim()) entry.cwd = server.cwd.trim();
-    } else {
-      continue;
-    }
-    if (name === "openclaw" && Array.isArray(toolAvailability?.openClaw)) {
-      entry.enabledTools = toolAvailability.openClaw;
-    } else if (Array.isArray(server.includeTools) && server.includeTools.length > 0) {
-      entry.enabledTools = server.includeTools;
-    }
-    if (Array.isArray(server.excludeTools) && server.excludeTools.length > 0) {
-      entry.disabledTools = server.excludeTools;
-    }
-    agyServers[name] = entry;
-  }
-  if (Object.keys(agyServers).length === 0) {
-    return null;
-  }
-  const home = env?.HOME || env?.USERPROFILE || homedir();
-  const mcpConfigPath = join(home, ".gemini", "config", "mcp_config.json");
-  let previousRaw = null;
-  let existingConfig = {};
-  try {
-    previousRaw = await readFile(mcpConfigPath, "utf8");
-    if (previousRaw.trim()) {
-      const parsed = JSON.parse(previousRaw);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        existingConfig = parsed;
-      }
-    }
-  } catch {
-    previousRaw = null;
-  }
-  const existingServers =
-    existingConfig.mcpServers &&
-    typeof existingConfig.mcpServers === "object" &&
-    !Array.isArray(existingConfig.mcpServers)
-      ? existingConfig.mcpServers
-      : {};
-  const mergedConfig = {
-    ...existingConfig,
-    mcpServers: {
-      ...existingServers,
-      ...agyServers,
-    },
-  };
-  await mkdir(dirname(mcpConfigPath), { recursive: true });
-  await writeFile(mcpConfigPath, `${JSON.stringify(mergedConfig, null, 2)}\n`, "utf8");
-  return async () => {
-    try {
-      const restored =
-        previousRaw && previousRaw.trim()
-          ? previousRaw
-          : `${JSON.stringify({ mcpServers: existingServers }, null, 2)}\n`;
-      await writeFile(mcpConfigPath, restored, "utf8");
-    } catch {
-      // Ignore cleanup errors
-    }
-  };
-}
-
 /**
- * @param {{command?: string, mode?: string, skipPermissions?: boolean}} [options]
+ * @param {{
+ *   command?: string,
+ *   mode?: string,
+ *   skipPermissions?: boolean,
+ *   maxConcurrency?: number,
+ *   liveSession?: boolean,
+ *   idleTimeoutSeconds?: number,
+ *   maxSilentThinkingSeconds?: number,
+ *   mcpTimeoutSeconds?: number,
+ * }} [options]
  *   Plugin config from `plugins.entries.antigravity.config`.
  */
 export function buildAntigravityCliBackend(options = {}, effortStore) {
   const base = buildBaseArgs(options);
-  const command = resolveAntigravityCommand(options.command?.trim() || DEFAULT_COMMAND);
+  const defaultCommand = options.command?.trim() || DEFAULT_COMMAND;
+  const command = resolveAntigravityCommand(defaultCommand);
+  const semaphore = createSemaphore(options.maxConcurrency ?? 4);
+  const sessionMutex = createKeyedMutex();
+  const idleTimeoutMs = (options.idleTimeoutSeconds ?? 600) * 1000;
+  const maxSilentThinkingSeconds = options.maxSilentThinkingSeconds ?? 720;
+  const maxSilentMs = maxSilentThinkingSeconds * 1000;
+  const mcpTimeoutSeconds = options.mcpTimeoutSeconds ?? 600;
   return {
     id: ANTIGRAVITY_BACKEND_ID,
     // Models are antigravity-cli/<model>, so this backend's id is the canonical provider.
@@ -269,7 +196,7 @@ export function buildAntigravityCliBackend(options = {}, effortStore) {
       nativeExecutableNames: ["agy", "agy.exe"],
     },
     bundleMcp: true,
-    bundleMcpMode: "gemini-system-settings",
+    bundleMcpMode: "claude-config-file",
     subscriptionAuthDispatch: true,
     sideQuestionToolMode: "disabled",
     nativeToolMode: "selectable",
@@ -281,23 +208,48 @@ export function buildAntigravityCliBackend(options = {}, effortStore) {
       ...(prepCtx?.isolatedCompletionPrompt !== undefined ? { isolatedCompletionEnforced: true } : {}),
       execute: async function* (context) {
         const env = buildAntigravityCommandEnv(context?.env);
-        const cleanupMcp = await syncAntigravityMcpConfig(env, context?.toolAvailability);
+        const resolvedCommand = resolveAntigravityCommand(context?.command ?? defaultCommand, env);
+        if (context?.liveSession && context?.executionMode !== "side-question") {
+          yield* executeAntigravityLiveTurn(
+            { ...context, env, command: resolvedCommand },
+            { semaphore, idleTimeoutMs, maxSilentMs, mcpTimeoutSeconds },
+          );
+          return;
+        }
+        const releaseMutex = await sessionMutex.lock(context?.sessionId);
+        let releaseSemaphore;
+        let iso;
         try {
+          releaseSemaphore = await semaphore.acquire(context?.abortSignal);
+          iso = await prepareAgyMcpIsolation({
+            args: context?.args ?? [],
+            env,
+            toolAvailability: context?.toolAvailability,
+            mcpTimeoutSeconds,
+          });
           yield* executeAntigravityStream({
             ...context,
+            args: iso.args,
             env,
-            command: resolveAntigravityCommand(context?.command, env),
+            command: resolvedCommand,
+            maxSilentThinkingSeconds,
           });
         } finally {
-          await cleanupMcp?.();
+          await iso?.cleanup();
+          releaseSemaphore?.();
+          releaseMutex();
         }
       },
     }),
-    resolveExecutionArgs: ({ baseArgs, executionMode, thinkingLevel, modelId }) => {
+    resolveExecutionArgs: ({ baseArgs, executionMode, thinkingLevel, modelId, controlOperation }) => {
+      const effectiveBaseArgs =
+        controlOperation === "compact"
+          ? (baseArgs ?? []).filter((arg) => arg !== "--disable-slash-commands")
+          : (baseArgs ?? []);
       // agy requires `--effort` on models with effort rows, including the
       // setup probe. Legacy models without effort rows omit the flag.
       const args = resolveAntigravityEffortArgs(
-        baseArgs,
+        effectiveBaseArgs,
         resolveAntigravityEffort(modelId, thinkingLevel, effortStore),
       );
       return executionMode === "side-question"
@@ -308,21 +260,25 @@ export function buildAntigravityCliBackend(options = {}, effortStore) {
     config: {
       command,
       args: [...base],
-      // agy resumes by conversation id; there is no separate session concept.
-      resumeArgs: [...base, "--conversation", "{sessionId}"],
+      // agy resumes by conversation id; OpenClaw's liveSession fingerprint
+      // strips `--resume`, and normalizeAgyArgs rewrites it to `--conversation` at spawn.
+      resumeArgs: [...base, "--resume", "{sessionId}"],
       output: "jsonl",
       resumeOutput: "jsonl",
-      input: "arg",
-      // agy takes the prompt as an argv value. Very long prompts blow the argv
-      // limit, so hand those to stdin instead.
-      maxPromptArgChars: MAX_PROMPT_ARG_CHARS,
+      input: "stdin",
+      liveSession: options.liveSession === false ? undefined : "claude-stdio",
       modelArg: "--model",
       modelAliases: { ...ANTIGRAVITY_MODEL_ALIASES },
       sessionMode: "existing",
       sessionIdFields: ["conversation_id"],
-      // One agy process at a time: concurrent print-mode runs against the same
-      // conversation interleave writes to its history.
-      serialize: true,
+      serialize: false,
+      imagePathScope: "workspace",
+      reliability: {
+        watchdog: {
+          fresh: { noOutputTimeoutRatio: 0.9, minMs: 300_000, maxMs: 900_000 },
+          resume: { noOutputTimeoutRatio: 0.9, minMs: 300_000, maxMs: 900_000 },
+        },
+      },
     },
   };
 }

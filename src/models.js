@@ -16,11 +16,12 @@ export function isAntigravityEffortLevel(level) {
 }
 
 /**
- * Current `--effort` levels from agy 1.3.4, with legacy compatibility entries. agy
+ * Current `--effort` levels from agy 1.5.14, with legacy compatibility entries. agy
  * rejects a model with effort rows when the flag is missing or not listed, and
  * rejects the flag on models without effort rows. Live `agy models` overrides.
  */
 const ANTIGRAVITY_MODEL_EFFORTS = {
+  "gemini-4-neon": ["low", "medium", "high", "xhigh"],
   "gemini-4-argon": ["low", "medium", "high"],
   "gemini-4-hydrogen": ["low", "medium", "high", "xhigh"],
   "gemini-3.8-flash": ["low", "medium", "high"],
@@ -32,6 +33,8 @@ const ANTIGRAVITY_MODEL_EFFORTS = {
   "claude-opus-5-5": ["low", "medium", "high"],
   "claude-sonnet-5-5": ["low", "medium", "high"],
   "gpt-oss-120b": ["medium"],
+  "gemini-pro-orchestrator-neon": [],
+  "gemini-pro-orchestrator-g1-pro": [],
 };
 
 export function createAntigravityEffortStore() {
@@ -50,6 +53,7 @@ const TRANSPORT_MODEL_IDS = {
 
 /** OpenClaw catalog ids. One row per model; effort is not part of the id. */
 export const ANTIGRAVITY_MODEL_IDS = [
+  "gemini-4-neon",
   "gemini-4-argon",
   "gemini-4-hydrogen",
   "gemini-3.8-flash",
@@ -87,6 +91,9 @@ export const ANTIGRAVITY_MODEL_ALIASES = {
   sonnet: "claude-sonnet-5-5",
   opus: "claude-opus-5-5",
   "gpt-oss": "gpt-oss-120b",
+  neon: "gemini-4-neon",
+  hydrogen: "gemini-4-hydrogen",
+  argon: "gemini-4-argon",
 };
 
 /** Drops host auth-profile and effort suffixes; preserves model version suffixes. */
