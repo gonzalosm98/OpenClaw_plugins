@@ -241,15 +241,11 @@ export function buildAntigravityCliBackend(options = {}, effortStore) {
         }
       },
     }),
-    resolveExecutionArgs: ({ baseArgs, executionMode, thinkingLevel, modelId, controlOperation }) => {
-      const effectiveBaseArgs =
-        controlOperation === "compact"
-          ? (baseArgs ?? []).filter((arg) => arg !== "--disable-slash-commands")
-          : (baseArgs ?? []);
+    resolveExecutionArgs: ({ baseArgs, executionMode, thinkingLevel, modelId }) => {
       // agy requires `--effort` on models with effort rows, including the
       // setup probe. Legacy models without effort rows omit the flag.
       const args = resolveAntigravityEffortArgs(
-        effectiveBaseArgs,
+        baseArgs ?? [],
         resolveAntigravityEffort(modelId, thinkingLevel, effortStore),
       );
       return executionMode === "side-question"

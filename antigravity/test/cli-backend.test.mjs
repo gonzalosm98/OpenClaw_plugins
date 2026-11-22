@@ -62,16 +62,16 @@ test("buildBaseArgs and buildAntigravityCliBackend expose Phase 1 + Phase 2 conf
   assert.equal(disabledLive.config.liveSession, undefined);
 });
 
-test("resolveExecutionArgs handles compact, side-question, and --effort resolution", () => {
+test("resolveExecutionArgs handles side-question and --effort resolution", () => {
   const backend = buildAntigravityCliBackend();
-  const compactArgs = backend.resolveExecutionArgs({
+  const neonArgs = backend.resolveExecutionArgs({
     baseArgs: backend.config.args,
     controlOperation: "compact",
     modelId: "gemini-4-neon",
     thinkingLevel: "xhigh",
   });
-  assert.equal(compactArgs.includes("--disable-slash-commands"), false);
-  assert.deepEqual(compactArgs.slice(-2), ["--effort", "xhigh"]);
+  assert.ok(neonArgs.includes("--disable-slash-commands"));
+  assert.deepEqual(neonArgs.slice(-2), ["--effort", "xhigh"]);
 
   const sideArgs = backend.resolveExecutionArgs({
     baseArgs: backend.config.args,
@@ -88,8 +88,11 @@ test("resolveExecutionArgs handles compact, side-question, and --effort resoluti
   ]);
 });
 
-test("models.js supports gemini-4-neon, xhigh, and aliases", () => {
+test("models.js supports gemini-4-neon, orchestrators, xhigh, and aliases", () => {
+  assert.equal(ANTIGRAVITY_MODEL_IDS.length, 9);
   assert.ok(ANTIGRAVITY_MODEL_IDS.includes("gemini-4-neon"));
+  assert.ok(ANTIGRAVITY_MODEL_IDS.includes("gemini-pro-orchestrator-neon"));
+  assert.ok(ANTIGRAVITY_MODEL_IDS.includes("gemini-pro-orchestrator-g1-pro"));
   assert.equal(ANTIGRAVITY_MODEL_ALIASES.neon, "gemini-4-neon");
   assert.equal(ANTIGRAVITY_MODEL_ALIASES.hydrogen, "gemini-4-hydrogen");
   assert.equal(ANTIGRAVITY_MODEL_ALIASES.argon, "gemini-4-argon");
@@ -99,11 +102,17 @@ test("models.js supports gemini-4-neon, xhigh, and aliases", () => {
   assert.equal(resolveAntigravityEffort("gemini-3.8-flash", "xhigh"), "high");
 
   const catalog = buildAntigravityModelCatalog();
+  assert.equal(catalog.length, 9);
   const neon = catalog.find((entry) => entry.id === "gemini-4-neon");
   assert.ok(neon);
   assert.equal(neon.name, "Gemini 4 Neon");
   assert.equal(neon.reasoning, true);
   assert.deepEqual(neon.input, ["text", "image"]);
+
+  const orchestrator = catalog.find((entry) => entry.id === "gemini-pro-orchestrator-neon");
+  assert.ok(orchestrator);
+  assert.equal(orchestrator.reasoning, false);
+  assert.deepEqual(orchestrator.input, ["text", "image"]);
 });
 
 test("prepareExecution.execute routes one-shot and live turns cleanly", async () => {

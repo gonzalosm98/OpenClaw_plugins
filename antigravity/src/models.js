@@ -56,6 +56,8 @@ export const ANTIGRAVITY_MODEL_IDS = [
   "gemini-4-neon",
   "gemini-4-argon",
   "gemini-4-hydrogen",
+  "gemini-pro-orchestrator-neon",
+  "gemini-pro-orchestrator-g1-pro",
   "gemini-3.8-flash",
   "claude-opus-5-5",
   "claude-sonnet-5-5",

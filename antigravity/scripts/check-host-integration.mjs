@@ -2,7 +2,7 @@
 
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -214,6 +214,7 @@ function boundedDiagnostics(chunks) {
 export async function withTemporaryRoot(run) {
   const tempRoot = await mkdtemp(join(tmpdir(), "antigravity-host-check-"));
   try {
+    await chmod(tempRoot, 0o700);
     return await run(tempRoot);
   } finally {
     await rm(tempRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
@@ -255,7 +256,7 @@ export async function runHostIntegrationCheck({
       let gateway;
 
       try {
-        await mkdir(stateDir, { recursive: true });
+        await mkdir(stateDir, { recursive: true, mode: 0o700 });
         await writeFile(
           configPath,
           `${JSON.stringify(
